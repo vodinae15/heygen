@@ -19,7 +19,11 @@ from telethon.tl.types import (
     User,
     Channel,
     Chat,
+    PeerChannel,
+    PeerChat,
+    InputPeerChannel,
 )
+from telethon.tl.functions.channels import GetFullChannelRequest
 from telethon.errors import (
     SessionPasswordNeededError,
     FloodWaitError,
@@ -62,10 +66,34 @@ class TelegramChatParser:
         if self.client:
             await self.client.disconnect()
 
+    async def find_chat_by_id(self, chat_id: int):
+        """Найти чат по ID через диалоги"""
+        # Пробуем разные варианты ID
+        ids_to_try = [chat_id, -chat_id, int(f"-100{abs(chat_id)}")]
+
+        print(f"Загрузка диалогов для поиска чата...")
+        async for dialog in self.client.iter_dialogs():
+            entity_id = dialog.entity.id
+            # Проверяем совпадение ID
+            if entity_id in ids_to_try or abs(entity_id) == abs(chat_id):
+                print(f"Найден чат: {dialog.name} (ID: {entity_id})")
+                return dialog.entity
+
+        return None
+
     async def get_chat_info(self, chat_identifier: str) -> Dict[str, Any]:
         """Получить информацию о чате"""
         try:
-            entity = await self.client.get_entity(chat_identifier)
+            entity = None
+            # Если это число - ищем через диалоги
+            try:
+                chat_id = int(chat_identifier)
+                entity = await self.find_chat_by_id(chat_id)
+            except ValueError:
+                pass
+
+            if not entity:
+                entity = await self.client.get_entity(chat_identifier)
 
             info = {
                 "id": entity.id,
@@ -189,7 +217,30 @@ class TelegramChatParser:
         messages_data = []
 
         try:
-            entity = await self.client.get_entity(chat_identifier)
+            # Пытаемся найти entity
+            entity = None
+
+            # Если это число - ищем через диалоги
+            try:
+                chat_id = int(chat_identifier)
+                entity = await self.find_chat_by_id(chat_id)
+            except ValueError:
+                pass
+
+            # Если не нашли через диалоги - пробуем напрямую
+            if not entity:
+                try:
+                    entity = await self.client.get_entity(chat_identifier)
+                except ValueError:
+                    # Последняя попытка - поиск по имени в диалогах
+                    async for dialog in self.client.iter_dialogs():
+                        if chat_identifier.lower() in dialog.name.lower():
+                            entity = dialog.entity
+                            break
+
+            if not entity:
+                raise ValueError(f"Чат не найден: {chat_identifier}")
+
             print(f"Парсинг чата: {getattr(entity, 'title', None) or getattr(entity, 'first_name', 'Unknown')}")
 
             # Параметры для iter_messages
