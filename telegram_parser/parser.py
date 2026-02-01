@@ -199,6 +199,8 @@ class TelegramChatParser:
         min_id: int = 0,
         max_id: int = 0,
         search: Optional[str] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
     ) -> List[Dict[str, Any]]:
         """
         Парсинг сообщений из чата
@@ -210,6 +212,8 @@ class TelegramChatParser:
             min_id: Минимальный ID сообщения
             max_id: Максимальный ID сообщения
             search: Поисковый запрос
+            start_date: Начальная дата (сообщения после этой даты)
+            end_date: Конечная дата (сообщения до этой даты)
 
         Returns:
             Список сообщений в виде словарей
@@ -243,20 +247,32 @@ class TelegramChatParser:
 
             print(f"Парсинг чата: {getattr(entity, 'title', None) or getattr(entity, 'first_name', 'Unknown')}")
 
+            # Используем end_date как offset_date для API
+            effective_offset_date = end_date or offset_date
+
             # Параметры для iter_messages
             iter_params = {
                 "entity": entity,
                 "limit": limit,
-                "offset_date": offset_date,
+                "offset_date": effective_offset_date,
                 "min_id": min_id,
                 "max_id": max_id,
                 "search": search,
             }
 
             count = 0
+            skipped = 0
             async for message in self.client.iter_messages(**iter_params):
                 if not isinstance(message, Message):
                     continue
+
+                # Фильтрация по start_date - пропускаем старые сообщения
+                if start_date and message.date:
+                    msg_date = message.date.replace(tzinfo=None)
+                    if msg_date < start_date:
+                        skipped += 1
+                        # Прекращаем если вышли за пределы диапазона
+                        break
 
                 count += 1
                 if count % 100 == 0:
@@ -296,6 +312,8 @@ class TelegramChatParser:
                 messages_data.append(message_data)
 
             print(f"Всего собрано {len(messages_data)} сообщений")
+            if start_date or end_date:
+                print(f"(в диапазоне дат: {start_date or 'начало'} - {end_date or 'сейчас'})")
 
         except FloodWaitError as e:
             print(f"Превышен лимит запросов. Подождите {e.seconds} секунд.")
@@ -398,10 +416,16 @@ async def main():
         chat_info = await parser.get_chat_info(chat)
         print(f"\nИнформация о чате: {chat_info}")
 
+        # Информация о фильтрах
+        if config.start_date or config.end_date:
+            print(f"Фильтр по датам: {config.start_date or 'начало'} - {config.end_date or 'сейчас'}")
+
         # Парсим сообщения
         messages = await parser.parse_messages(
             chat_identifier=chat,
-            limit=config.message_limit,  # None для всех сообщений
+            limit=config.message_limit,
+            start_date=config.start_date,
+            end_date=config.end_date,
         )
 
         # Сохраняем результаты

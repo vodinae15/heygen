@@ -4,6 +4,7 @@
 
 import os
 from pathlib import Path
+from datetime import datetime
 from dotenv import load_dotenv
 
 # Загружаем переменные окружения из .env файла
@@ -32,6 +33,18 @@ class Config:
         # Лимит сообщений (None = все сообщения)
         limit_str = os.getenv("MESSAGE_LIMIT", "")
         self.message_limit: int | None = int(limit_str) if limit_str else None
+
+        # Фильтр по датам (формат: YYYY-MM-DD)
+        start_date_str = os.getenv("START_DATE", "")
+        end_date_str = os.getenv("END_DATE", "")
+
+        self.start_date: datetime | None = None
+        self.end_date: datetime | None = None
+
+        if start_date_str:
+            self.start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+        if end_date_str:
+            self.end_date = datetime.strptime(end_date_str, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
 
         # Директория для сохранения результатов
         self.output_dir: str = os.getenv("OUTPUT_DIR", str(Path(__file__).parent / "output"))
