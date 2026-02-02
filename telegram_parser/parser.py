@@ -282,6 +282,12 @@ class TelegramChatParser:
                 sender_info = await self._get_sender_info(message)
                 media_info = self._extract_media_info(message)
 
+                # Извлекаем ID пересылки (может быть PeerUser/PeerChannel объектом)
+                forward_from_id = None
+                if message.fwd_from and message.fwd_from.from_id:
+                    fwd = message.fwd_from.from_id
+                    forward_from_id = getattr(fwd, 'user_id', None) or getattr(fwd, 'channel_id', None) or getattr(fwd, 'chat_id', None)
+
                 message_data = {
                     "id": message.id,
                     "date": message.date.isoformat() if message.date else None,
@@ -290,7 +296,7 @@ class TelegramChatParser:
                     "sender_name": sender_info["name"],
                     "sender_username": sender_info["username"],
                     "reply_to_msg_id": message.reply_to.reply_to_msg_id if message.reply_to else None,
-                    "forward_from_id": message.fwd_from.from_id if message.fwd_from else None,
+                    "forward_from_id": forward_from_id,
                     "views": message.views,
                     "forwards": message.forwards,
                     "reactions": None,
